@@ -2,26 +2,25 @@
 name: Build NAVEE S60 APK
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Find and extract project ZIP
+      - name: Extract NAVEE project
         run: |
           ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" | head -n 1)
-          if [ -z "$ZIP_FILE" ]; then
-            echo "Archive ZIP introuvable"
-            exit 1
-          fi
+          test -n "$ZIP_FILE"
           mkdir source
           unzip -q "$ZIP_FILE" -d source
           test -f source/navee-st3-pro/android/gradlew
@@ -32,20 +31,21 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Android SDK
+      - name: Configure Android SDK
         run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          yes | sdkmanager --licenses
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)
+          test -n "$SDKMANAGER"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
 
+      - name: Accept licenses and install SDK
+        run: |
+          set +o pipefail
+          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Accept Android SDK licenses
-        run: yes | sdkmanager --licenses
-
-      - name: Install Android SDK packages
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
-
-
-      - name: Build APK
+      - name: Build NAVEE APK
         run: |
           cd source/navee-st3-pro/android
           chmod +x gradlew
@@ -57,4 +57,4 @@ jobs:
           name: NAVEE-S60-APK
           path: source/navee-st3-pro/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-          
+          retention-days: 14
